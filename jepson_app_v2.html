@@ -331,7 +331,7 @@ const GROUP_DESC = {
 let KEY = null;
 
 // ── Data loading: fetch jepson_data.gz, cache in IndexedDB ──────────────────
-const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 3;
+const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 4;
 function _openDB() {
   return new Promise((res, rej) => {
     const r = indexedDB.open(_DB_NAME, 1);
