@@ -134,12 +134,6 @@ abbr{text-decoration:underline dotted var(--sage);cursor:help}
 .loading-msg{text-align:center;padding:40px;color:var(--muted);font-style:italic}
 footer{text-align:center;padding:10px;font-size:0.68rem;color:var(--muted);border-top:1px solid var(--cream-dk)}
 footer a{color:var(--sage);text-decoration:none}
-
-.chat-msg{padding:9px 12px;border-radius:10px;font-size:0.84rem;line-height:1.55;max-width:88%;white-space:pre-wrap}
-.chat-msg.user{background:var(--forest);color:var(--cream);align-self:flex-end;border-bottom-right-radius:3px}
-.chat-msg.ai{background:white;border:1px solid var(--border);color:var(--ink);align-self:flex-start;border-bottom-left-radius:3px}
-.chat-msg.err{background:#FDF0EC;border:1px solid #D4856A;color:var(--rust);align-self:flex-start}
-.chat-msg.thinking{color:var(--muted);font-style:italic}
 </style>
 </head>
 <body>
@@ -172,7 +166,6 @@ footer a{color:var(--sage);text-decoration:none}
   <button class="tab" onclick="showTab('browser')">📋 Families</button>
   <button class="tab" onclick="showTab('notes')">📝 Notes</button>
   <button class="tab" id="tab-errors" onclick="showTab('errors')">🚩 Errors<span id="err-badge" style="display:none;margin-left:4px;background:var(--rust);color:white;border-radius:8px;padding:1px 5px;font-size:0.65rem"></span></button>
-  <button class="tab" id="tab-chat" onclick="showTab('chat')">💬 Chat</button>
 </div>
 
 <main>
@@ -221,26 +214,10 @@ footer a{color:var(--sage);text-decoration:none}
   <!-- ERRORS TAB -->
   <div id="errors-panel" class="tab-panel" style="flex-direction:column;gap:10px;padding:14px">
     <div style="display:flex;gap:6px;align-items:center">
-      <div style="flex:1;font-size:0.82rem;color:var(--muted)">Flagged issues are stored on this device. Send them to Claude to get the data fixed.</div>
-      <button class="btn" onclick="sendErrorsToChat()" style="flex-shrink:0;background:var(--forest);color:var(--cream);border-color:var(--forest)">Send to Claude</button>
+      <div style="flex:1;font-size:0.82rem;color:var(--muted)">Flagged issues are stored on this device.</div>
+      <button class="btn" onclick="copyErrorsToClipboard()" style="flex-shrink:0;background:var(--forest);color:var(--cream);border-color:var(--forest)">Copy all</button>
     </div>
     <div id="errors-list"></div>
-  </div>
-
-  <!-- CHAT TAB -->
-  <div id="chat-panel" class="tab-panel" style="flex-direction:column;gap:8px;padding:14px">
-    <div id="chat-key-row" style="background:var(--cream-dk);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:0.82rem">
-      <span style="color:var(--muted)">Anthropic API key:</span>
-      <span id="chat-key-status" style="color:var(--forest);font-weight:bold;margin:0 6px">not set</span>
-      <button class="btn" style="font-size:0.72rem;padding:3px 8px" onclick="promptApiKey()">Set key</button>
-    </div>
-    <div id="chat-msgs" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:180px;max-height:45vh"></div>
-    <div style="display:flex;gap:6px">
-      <input type="text" id="chat-input" placeholder="Ask about a California plant…"
-        style="flex:1;padding:9px 11px;border:1.5px solid var(--border);border-radius:6px;font-family:Georgia,serif;font-size:0.88rem"
-        onkeydown="if(event.key==='Enter')sendChat()">
-      <button class="btn" onclick="sendChat()" id="chat-send-btn">Send</button>
-    </div>
   </div>
 
   <!-- NOTES TAB -->
@@ -930,7 +907,7 @@ function deleteNote(idx) {
 // ── TABS ──
 function showTab(name) {
   document.querySelectorAll('.tab').forEach((t,i) => {
-    const names = ['key','browser','notes','errors','chat'];
+    const names = ['key','browser','notes','errors'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.tab-panel').forEach((p) => {
@@ -1157,14 +1134,14 @@ function deleteError(id) {
   renderErrors();
 }
 
-function sendErrorsToChat() {
+function copyErrorsToClipboard() {
   const errors = loadErrors();
   if (!errors.length) { alert('No errors flagged yet.'); return; }
   const typeLabels = {
     wrong_dest:'Wrong destination', missing_species:'Missing species',
     wrong_text:'Wrong/garbled text', dead_end:'Dead end', other:'Other'
   };
-  let msg = 'Here are the flagged data errors from the Jepson app (please fix these in the CSV data):\n\n';
+  let msg = 'Flagged data errors from Jepson app:\n\n';
   errors.forEach((e, i) => {
     const loc = e.genusName || e.familyName || e.groupSection || 'Top-level';
     msg += `${i+1}. [${typeLabels[e.errorType]||e.errorType}] ${loc} (${e.level} key, couplet ${e.coupletNum||'?'})`;
@@ -1172,11 +1149,7 @@ function sendErrorsToChat() {
     if (e.coupletData) msg += `\n   Data: ${JSON.stringify(e.coupletData).slice(0,300)}`;
     msg += '\n\n';
   });
-  // Pre-fill chat input and switch to chat tab
-  showTab('chat');
-  const inp = document.getElementById('chat-input');
-  if (inp) inp.value = msg;
-  inp.focus();
+  navigator.clipboard.writeText(msg).then(() => alert('Errors copied to clipboard!')).catch(() => alert(msg));
 }
 
 // Init badge on load
@@ -1295,92 +1268,6 @@ function renderListItems(items, listType, ownerName, filter, container) {
     container.appendChild(msg);
   }
 }
-
-// ── CHAT ─────────────────────────────────────────────────────────────────────
-let chatHistory = [];
-let anthropicKey = localStorage.getItem('jepson_api_key') || '';
-
-function updateKeyStatus() {
-  const el = document.getElementById('chat-key-status');
-  if (el) el.textContent = anthropicKey ? '✓ set' : 'not set';
-}
-
-function promptApiKey() {
-  const k = prompt('Enter your Anthropic API key (sk-ant-…):', anthropicKey || '');
-  if (k !== null) {
-    anthropicKey = k.trim();
-    localStorage.setItem('jepson_api_key', anthropicKey);
-    updateKeyStatus();
-  }
-}
-
-function chatAppendMsg(text, cls) {
-  const msgs = document.getElementById('chat-msgs');
-  if (!msgs) return null;
-  const d = document.createElement('div');
-  d.className = 'chat-msg ' + cls;
-  d.textContent = text;
-  msgs.appendChild(d);
-  msgs.scrollTop = msgs.scrollHeight;
-  return d;
-}
-
-async function sendChat() {
-  const inp = document.getElementById('chat-input');
-  if (!inp) return;
-  const q = inp.value.trim();
-  if (!q) return;
-  inp.value = '';
-
-  chatAppendMsg(q, 'user');
-  chatHistory.push({role:'user', content: q});
-
-  if (!anthropicKey) {
-    chatAppendMsg('No API key set — tap "Set key" above.', 'err');
-    return;
-  }
-
-  const thinking = chatAppendMsg('Thinking…', 'ai thinking');
-  document.getElementById('chat-send-btn').disabled = true;
-
-  // Build context from current navigation state
-  let ctx = '';
-  if (state.familyName) ctx += 'User is currently keying in family: ' + state.familyName + '. ';
-  if (state.genusName)  ctx += 'Genus: ' + state.genusName + '. ';
-
-  const system = `You are a California flora expert helping users navigate the Jepson Manual dichotomous keys (2nd ed., 2012). Be concise. Use botanical terms but explain them when needed. If asked to identify a plant, ask about key features: habit, leaf arrangement, flower parts, fruit type. When you identify a family or genus, name it clearly so the user can find it in the app.${ctx ? ' ' + ctx : ''}`;
-
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-calls': 'true',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
-        system,
-        messages: chatHistory
-      })
-    });
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error.message);
-    const reply = data.content[0].text;
-    chatHistory.push({role:'assistant', content: reply});
-    if (thinking) { thinking.textContent = reply; thinking.classList.remove('thinking'); }
-  } catch(e) {
-    chatHistory.pop();
-    if (thinking) { thinking.textContent = 'Error: ' + e.message + ' (check API key and internet connection)'; thinking.className = 'chat-msg err'; }
-  } finally {
-    document.getElementById('chat-send-btn').disabled = false;
-  }
-}
-
-// Init key status on load
-document.addEventListener('DOMContentLoaded', updateKeyStatus);
 
 </script>
 
