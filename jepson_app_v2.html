@@ -658,6 +658,17 @@ function showResult(type, canonName, displayName, context, extraNote) {
   nameEl.textContent = displayName;
   nameEl.className = 'result-name' + (type==='family' ? ' family-name' : '');
   document.getElementById('result-ctx').textContent = context;
+  // Special handling for family-internal sub-group destinations (e.g. "Asteraceae Group 1")
+  // These aren't taxa — they're pointers to sub-keys not in this offline dataset.
+  if (/\bGroup\s+\d+\b/i.test(canonName)) {
+    const nameEl = document.getElementById('result-name');
+    if (nameEl) {
+      nameEl.className = 'result-name family-name';  // un-italicize
+      nameEl.textContent = canonName;
+    }
+    document.getElementById('result-ctx').textContent =
+      (context ? context + ' · ' : '') + 'Sub-group key not in offline data — continue on Jepson eFlora online.';
+  }
   const descEl = document.getElementById('result-desc');
   if (descEl) {
     const descKey = (type === 'species' ? canonName : (state.genusName || canonName)).toUpperCase();
