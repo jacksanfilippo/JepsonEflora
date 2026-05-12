@@ -344,7 +344,7 @@ const GROUP_DESC = {
 let KEY = null;
 
 // ── Data loading: fetch jepson_data.gz, cache in IndexedDB ──────────────────
-const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 6;
+const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 7;
 function _openDB() {
   return new Promise((res, rej) => {
     const r = indexedDB.open(_DB_NAME, 1);
@@ -561,6 +561,12 @@ function onChoose(label, lead) {
   });
 
   if (dest.type === 'family') {
+    // Special case: "Asteraceae Group N" → show filtered genus list
+    const _astm = /^Asteraceae\s+Group\s+(\d+)$/i.exec(dest.value);
+    if (_astm) {
+      showAsteraceaeGroup(parseInt(_astm[1]));
+      return;
+    }
     // Groups key leads directly to a family by name
     state.familyName = dest.value.toUpperCase().split('(')[0].trim();
     const _fd = KEY.families[state.familyName];
@@ -1375,6 +1381,122 @@ function copyErrorsToClipboard() {
 
 // Init badge on load
 document.addEventListener('DOMContentLoaded', updateErrBadge);
+
+// ── ASTERACEAE GROUP HANDLER ─────────────────────────────────────────────────
+// When a key destination resolves to "Asteraceae Group N", show a filtered list
+// of genera that fit that Group's criteria (so the user can continue keying).
+function showAsteraceaeGroup(n) {
+  const groups = (KEY && KEY.asteraceae_groups) || {};
+  const genera = groups[String(n)] || groups[n] || [];
+
+  document.getElementById('result-box').classList.remove('on');
+  const _de = document.getElementById('result-desc');
+  if (_de) _de.style.display = 'none';
+  document.getElementById('err-box').style.display = 'none';
+  document.getElementById('couplet-card').style.display = '';
+
+  // Save state in history so back button works
+  state.history.push({
+    level: state.level, groupSection: state.groupSection,
+    groupCouplet: state.groupCouplet, familyName: state.familyName,
+    genusName: state.genusName, familyCouplet: state.familyCouplet,
+    genusCouplet: state.genusCouplet, genusGroupSection: state.genusGroupSection,
+    label: 'Asteraceae Group ' + n,
+    choiceText: 'Group ' + n
+  });
+
+  state.familyName = 'ASTERACEAE';
+  state.level = 'family';
+
+  document.getElementById('couplet-num').textContent = 'Asteraceae — Group ' + n;
+  const choices = document.getElementById('choices');
+  choices.innerHTML = '';
+
+  // Description header
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'padding:8px 10px 10px;font-size:0.78rem;color:var(--muted);line-height:1.4';
+  hdr.textContent = 'Pick a genus to continue identification. ' +
+    (genera.length === 0 ? 'No genera curated for this group yet.' :
+     genera.length + ' genera in Group ' + n + '.');
+  choices.appendChild(hdr);
+
+  if (!genera.length) {
+    updateBreadcrumb();
+    return;
+  }
+
+  // Search box
+  const searchWrap = document.createElement('div');
+  searchWrap.style.cssText = 'margin-bottom:8px';
+  const searchInp = document.createElement('input');
+  searchInp.type = 'search';
+  searchInp.placeholder = 'Filter genera…';
+  searchInp.className = 'search-box';
+  searchInp.style.cssText = 'width:100%;margin-bottom:0';
+  searchInp.oninput = () => _renderAsterGroupItems(genera, searchInp.value.toLowerCase().trim(), choices);
+  searchWrap.appendChild(searchInp);
+  choices.appendChild(searchWrap);
+
+  _renderAsterGroupItems(genera, '', choices);
+  updateBreadcrumb();
+  updateProgress();
+}
+
+function _renderAsterGroupItems(genera, filter, container) {
+  // Remove old items (keep header at index 0 + search at 1)
+  while (container.children.length > 2) container.removeChild(container.lastChild);
+  const fams = KEY.families.ASTERACEAE || {};
+  const allGenera = fams.genera || {};
+  const filtered = filter ? genera.filter(g => g.toLowerCase().includes(filter)) : genera;
+
+  for (const g of filtered) {
+    const gk = g.toUpperCase();
+    const gData = allGenera[gk] || {};
+    const hasKey = gData.key && Object.keys(gData.key).length > 0;
+    const spCount = (gData.species || []).length;
+
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn ca';
+    btn.style.cssText = 'font-style:italic';
+    const lbl = document.createElement('span');
+    lbl.className = 'choice-lbl';
+    lbl.textContent = '▶';
+    btn.appendChild(lbl);
+    const body = document.createElement('div');
+    body.className = 'choice-body';
+    body.textContent = g;
+    const hint = document.createElement('div');
+    hint.className = 'choice-hint';
+    hint.textContent = hasKey ? 'Has identification key' : (spCount ? spCount + ' species listed' : 'No key available');
+    body.appendChild(hint);
+    btn.appendChild(body);
+
+    btn.onclick = () => {
+      state.history.push({
+        level: state.level, groupSection: state.groupSection,
+        groupCouplet: state.groupCouplet, familyName: state.familyName,
+        genusName: state.genusName, familyCouplet: state.familyCouplet,
+        genusCouplet: state.genusCouplet, genusGroupSection: state.genusGroupSection,
+        label: g, choiceText: g
+      });
+      state.genusName = gk;
+      if (hasKey) {
+        state.level = 'genus'; state.genusCouplet = 1; renderKey();
+      } else if (spCount > 0) {
+        state.level = 'genus'; showTaxonList('species', g);
+      } else {
+        showResult('genus', g, g, 'ASTERACEAE', 'No key or species data available for this genus.');
+      }
+    };
+    container.appendChild(btn);
+  }
+  if (!filtered.length) {
+    const msg = document.createElement('div');
+    msg.style.cssText = 'padding:10px;color:var(--muted);font-size:0.85rem;font-style:italic';
+    msg.textContent = 'No matches.';
+    container.appendChild(msg);
+  }
+}
 
 // ── TAXON LIST (genus list / species list fallbacks) ─────────────────────────
 function showTaxonList(listType, ownerName) {
