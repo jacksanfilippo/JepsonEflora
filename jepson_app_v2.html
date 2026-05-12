@@ -344,7 +344,7 @@ const GROUP_DESC = {
 let KEY = null;
 
 // ── Data loading: fetch jepson_data.gz, cache in IndexedDB ──────────────────
-const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 7;
+const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 8;
 function _openDB() {
   return new Promise((res, rej) => {
     const r = indexedDB.open(_DB_NAME, 1);
@@ -560,13 +560,13 @@ function onChoose(label, lead) {
     choiceText: (lead.text || '').substring(0, 60)
   });
 
+  // Special case: "ASTERACEAE GROUP N" — show filtered genus list, not a result
+  if ((dest.type === 'taxon' || dest.type === 'family') && /^ASTERACEAE\s+GROUP\s+\d+$/i.test(dest.value)) {
+    const _astm = /GROUP\s+(\d+)/i.exec(dest.value);
+    if (_astm) { showAsteraceaeGroup(parseInt(_astm[1])); return; }
+  }
+
   if (dest.type === 'family') {
-    // Special case: "Asteraceae Group N" → show filtered genus list
-    const _astm = /^Asteraceae\s+Group\s+(\d+)$/i.exec(dest.value);
-    if (_astm) {
-      showAsteraceaeGroup(parseInt(_astm[1]));
-      return;
-    }
     // Groups key leads directly to a family by name
     state.familyName = dest.value.toUpperCase().split('(')[0].trim();
     const _fd = KEY.families[state.familyName];
