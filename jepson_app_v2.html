@@ -344,7 +344,7 @@ const GROUP_DESC = {
 let KEY = null;
 
 // ── Data loading: fetch jepson_data.gz, cache in IndexedDB ──────────────────
-const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 8;
+const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 9;
 function _openDB() {
   return new Promise((res, rej) => {
     const r = indexedDB.open(_DB_NAME, 1);
@@ -470,8 +470,14 @@ function renderKey() {
       ? 'Work through these couplets to reach the correct group key for your plant.'
       : GROUP_DESC[state.groupSection] || '';
   } else if (state.level === 'family') {
-    badge = state.familyName;
-    note = 'Key to genera within ' + state.familyName;
+    const _grpM = /^ASTERACEAE\s+GROUP\s+(\d+)$/i.exec(state.familyName);
+    if (_grpM) {
+      badge = 'Asteraceae';
+      note = 'Key to genera — Group ' + _grpM[1];
+    } else {
+      badge = state.familyName;
+      note = 'Key to genera within ' + state.familyName;
+    }
   } else if (state.level === 'genus') {
     const gcTitle = state.genusName.charAt(0) + state.genusName.slice(1).toLowerCase();
     const genData2 = ((KEY.families[state.familyName] || {}).genera || {})[state.genusName] || {};
@@ -560,10 +566,30 @@ function onChoose(label, lead) {
     choiceText: (lead.text || '').substring(0, 60)
   });
 
-  // Special case: "ASTERACEAE GROUP N" — show filtered genus list, not a result
+  // Special case: "ASTERACEAE GROUP N" — navigate into the Group sub-key
   if ((dest.type === 'taxon' || dest.type === 'family') && /^ASTERACEAE\s+GROUP\s+\d+$/i.test(dest.value)) {
     const _astm = /GROUP\s+(\d+)/i.exec(dest.value);
-    if (_astm) { showAsteraceaeGroup(parseInt(_astm[1])); return; }
+    if (_astm) {
+      const _grpN = _astm[1];
+      const _grpKey = 'ASTERACEAE GROUP ' + _grpN;
+      const _grpData = KEY.families[_grpKey];
+      if (_grpData && _grpData.key && Object.keys(_grpData.key).length > 0) {
+        // Navigate into the Group sub-key exactly like entering a family key
+        state.history.push({level:state.level,groupSection:state.groupSection,groupCouplet:state.groupCouplet,familyName:state.familyName,genusName:state.genusName,familyCouplet:state.familyCouplet,genusCouplet:state.genusCouplet,genusGroupSection:state.genusGroupSection,label:'Group '+_grpN,choiceText:dest.value});
+        state.familyName = _grpKey;
+        state.familyCouplet = 1;
+        state.level = 'family';
+        document.getElementById('result-box').classList.remove('on');
+        const _gde = document.getElementById('result-desc');
+        if (_gde) _gde.style.display = 'none';
+        document.getElementById('err-box').style.display = 'none';
+        document.getElementById('couplet-card').style.display = '';
+        renderKey();
+      } else {
+        showAsteraceaeGroup(parseInt(_grpN));  // fallback: genus list
+      }
+      return;
+    }
   }
 
   if (dest.type === 'family') {
@@ -636,6 +662,8 @@ function onChoose(label, lead) {
     } else if (state.level === 'family') {
       // Terminal from family key = Genus name
       state.genusName = name.toUpperCase().split('(')[0].trim().split(' ')[0];
+      // Asteraceae Group sub-keys: genus data is stored under ASTERACEAE
+      if (/^ASTERACEAE\s+GROUP\s+\d+$/i.test(state.familyName)) state.familyName = 'ASTERACEAE';
       const famData = KEY.families[state.familyName] || {};
       const genData = (famData.genera || {})[state.genusName];
       if (genData && genData.key && Object.keys(genData.key).length > 0) {
