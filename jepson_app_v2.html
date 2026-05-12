@@ -344,7 +344,7 @@ const GROUP_DESC = {
 let KEY = null;
 
 // ── Data loading: fetch jepson_data.gz, cache in IndexedDB ──────────────────
-const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 4;
+const _DB_NAME = 'JepsonDataDB', _DB_STORE = 'cache', _DATA_VER = 5;
 function _openDB() {
   return new Promise((res, rej) => {
     const r = indexedDB.open(_DB_NAME, 1);
@@ -1036,22 +1036,43 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Register service worker via blob (enables offline caching when served from a server)
   if ('serviceWorker' in navigator) {
     const swCode = `
-const CACHE = 'jepson-v1';
-self.addEventListener('install', e => {
-  self.skipWaiting();
-});
+const CACHE = 'jepson-v3';
+self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => {
-  e.waitUntil(clients.claim());
+  e.waitUntil((async () => {
+    // Delete any old caches so updated app HTML/JS is fetched fresh
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+    await clients.claim();
+  })());
 });
 self.addEventListener('fetch', e => {
-  e.respondWith(
-    caches.open(CACHE).then(cache =>
-      cache.match(e.request).then(r => r || fetch(e.request).then(res => {
-        if (res.ok) cache.put(e.request, res.clone());
+  const url = new URL(e.request.url);
+  const isHtmlOrJs = /\.(html|js)$/.test(url.pathname) || url.pathname.endsWith('/');
+  if (isHtmlOrJs) {
+    // Network-first for HTML/JS: always try fresh, fall back to cache offline
+    e.respondWith((async () => {
+      try {
+        const res = await fetch(e.request, {cache:'no-cache'});
+        if (res.ok) (await caches.open(CACHE)).put(e.request, res.clone());
         return res;
-      }))
-    ).catch(() => caches.match(e.request))
-  );
+      } catch {
+        const cached = await caches.match(e.request);
+        if (cached) return cached;
+        throw new Error('offline');
+      }
+    })());
+  } else {
+    // Cache-first for everything else (data file, icons)
+    e.respondWith(
+      caches.open(CACHE).then(cache =>
+        cache.match(e.request).then(r => r || fetch(e.request).then(res => {
+          if (res.ok) cache.put(e.request, res.clone());
+          return res;
+        }))
+      ).catch(() => caches.match(e.request))
+    );
+  }
 });
 `;
     try {
