@@ -165,6 +165,7 @@ footer a{color:var(--sage);text-decoration:none}
   <button class="tab active" onclick="showTab('key')">🔑 Key</button>
   <button class="tab" onclick="showTab('browser')">📋 Families</button>
   <button class="tab" onclick="showTab('notes')">📝 Notes</button>
+  <button class="tab" id="tab-saved" onclick="showTab('saved')">🌿 Saved<span id="saved-badge" style="display:none;margin-left:4px;background:var(--forest);color:white;border-radius:8px;padding:1px 5px;font-size:0.65rem"></span></button>
   <button class="tab" id="tab-errors" onclick="showTab('errors')">🚩 Errors<span id="err-badge" style="display:none;margin-left:4px;background:var(--rust);color:white;border-radius:8px;padding:1px 5px;font-size:0.65rem"></span></button>
 </div>
 
@@ -195,6 +196,7 @@ footer a{color:var(--sage);text-decoration:none}
       <div id="result-desc" style="display:none;margin:10px 0;padding:10px 12px;background:rgba(0,0,0,0.15);border-radius:6px;font-size:0.82rem;line-height:1.6;color:var(--cream);text-align:left;max-height:160px;overflow-y:auto"></div>
       <div class="result-links" id="result-links"></div>
       <div class="result-actions">
+        <button class="btn" id="btn-save-plant" style="background:var(--forest);color:var(--cream);border-color:var(--forest)" onclick="openSaveModal()">🌿 Save</button>
         <button class="btn" onclick="goBack()">← Different path</button>
         <button class="btn" style="color:var(--rust);border-color:var(--rust)" onclick="openFlagModal('result')">🚩 Flag error</button>
         <button class="btn" onclick="resetKey()">Start over</button>
@@ -210,6 +212,15 @@ footer a{color:var(--sage);text-decoration:none}
     <div class="fam-list" id="fam-list"></div>
   </div>
 
+
+  <!-- SAVED PLANTS TAB -->
+  <div id="saved-panel" class="tab-panel" style="flex-direction:column;gap:0;padding:0">
+    <div style="display:flex;gap:6px;align-items:center;padding:12px 14px 8px">
+      <div style="flex:1;font-size:0.82rem;color:var(--muted)">Plants identified on this device.</div>
+      <button class="btn" id="saved-filter-btn" onclick="cycleSavedFilter()" style="flex-shrink:0;font-size:0.72rem;padding:4px 8px">All</button>
+    </div>
+    <div id="saved-list" style="flex:1;overflow-y:auto;padding:0 14px 14px"></div>
+  </div>
 
   <!-- ERRORS TAB -->
   <div id="errors-panel" class="tab-panel" style="flex-direction:column;gap:10px;padding:14px">
@@ -652,6 +663,9 @@ function showResult(type, canonName, displayName, context, extraNote) {
     if (descText) { descEl.textContent = descText; descEl.style.display = ''; }
     else { descEl.style.display = 'none'; }
   }
+  // Track current result for save modal and update save button state
+  _currentResult = { taxon: canonName, displayName: name, type };
+  _updateSaveBtn(canonName);
   const noteEl = document.getElementById('result-extra-note');
   if (noteEl) {
     if (extraNote) { noteEl.textContent = extraNote; noteEl.style.display=''; }
@@ -907,13 +921,14 @@ function deleteNote(idx) {
 // ── TABS ──
 function showTab(name) {
   document.querySelectorAll('.tab').forEach((t,i) => {
-    const names = ['key','browser','notes','errors'];
+    const names = ['key','browser','notes','saved','errors'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.tab-panel').forEach((p) => {
     p.classList.toggle('active', p.id === name+'-panel');
   });
   if (name === 'notes') renderNotes();
+  if (name === 'saved') renderSaved();
   if (name === 'errors') renderErrors();
 }
 
@@ -1034,6 +1049,142 @@ self.addEventListener('fetch', e => {
   }
 })();
 
+
+// ── SAVED PLANTS ─────────────────────────────────────────────────────────────
+const SAVED_KEY = 'jepson_saved_v1';
+let _savedFilter = 'all';
+
+function loadSaved() { try { return JSON.parse(localStorage.getItem(SAVED_KEY)||'[]'); } catch { return []; } }
+function storeSaved(arr) { try { localStorage.setItem(SAVED_KEY, JSON.stringify(arr)); } catch {} }
+
+function updateSavedBadge() {
+  const n = loadSaved().length;
+  const b = document.getElementById('saved-badge');
+  if (b) { b.textContent = n; b.style.display = n ? '' : 'none'; }
+}
+
+let _currentResult = {};
+
+function _updateSaveBtn(taxonName) {
+  const btn = document.getElementById('btn-save-plant');
+  if (!btn) return;
+  const existing = loadSaved().find(s => s.taxon === taxonName);
+  if (existing) {
+    const icons = {success:'✅',unclear:'🔍',failed:'❌'};
+    btn.innerHTML = (icons[existing.status]||'🌿') + ' Saved';
+    btn.style.opacity = '0.75';
+  } else {
+    btn.innerHTML = '🌿 Save';
+    btn.style.opacity = '';
+  }
+}
+
+function openSaveModal() {
+  const m = document.getElementById('save-modal');
+  if (!m) return;
+  document.getElementById('save-modal-name').textContent = _currentResult.displayName || _currentResult.taxon || '';
+  m.style.display = 'flex';
+}
+
+function closeSaveModal() {
+  const m = document.getElementById('save-modal');
+  if (m) m.style.display = 'none';
+}
+
+function commitSave(status) {
+  const saved = loadSaved();
+  const idx = saved.findIndex(s => s.taxon === _currentResult.taxon);
+  const entry = {
+    id: Date.now(),
+    taxon: _currentResult.taxon || '',
+    displayName: _currentResult.displayName || _currentResult.taxon || '',
+    type: _currentResult.type || 'species',
+    family: state.familyName || '',
+    genus: state.genusName || '',
+    path: (state.history || []).map(h => h.choiceText || h.label || '').filter(Boolean).slice(-6),
+    date: new Date().toISOString(),
+    status
+  };
+  if (idx >= 0) saved.splice(idx, 1, entry);
+  else saved.push(entry);
+  storeSaved(saved);
+  updateSavedBadge();
+  closeSaveModal();
+  _updateSaveBtn(entry.taxon);
+}
+
+function cycleSavedFilter() {
+  const cycle = ['all','success','unclear','failed'];
+  _savedFilter = cycle[(cycle.indexOf(_savedFilter) + 1) % cycle.length];
+  const labels = {all:'All', success:'✅ Success', unclear:'🔍 Unclear', failed:'❌ Failed'};
+  const btn = document.getElementById('saved-filter-btn');
+  if (btn) btn.textContent = labels[_savedFilter];
+  renderSaved();
+}
+
+function renderSaved() {
+  const el = document.getElementById('saved-list');
+  if (!el) return;
+  let saved = loadSaved().slice().reverse();
+  if (_savedFilter !== 'all') saved = saved.filter(s => s.status === _savedFilter);
+  if (!saved.length) {
+    const msg = _savedFilter === 'all'
+      ? 'No plants saved yet.<br><br>Use 🌿 Save on any result screen to record an identification.'
+      : 'No plants with this status.';
+    el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px;font-style:italic;font-size:0.85rem">' + msg + '</div>';
+    return;
+  }
+  el.innerHTML = '';
+  for (const s of saved) {
+    const icon = {success:'✅',unclear:'🔍',failed:'❌'}[s.status]||'?';
+    const label = {success:'Identified',unclear:'Uncertain',failed:'Key failed'}[s.status]||s.status;
+    const color = {success:'#3a6741',unclear:'#8b6e14',failed:'#8b3a3a'}[s.status]||'#666';
+    const date = new Date(s.date).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+    const card = document.createElement('div');
+    card.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:11px 13px;margin-bottom:8px;background:rgba(255,255,255,0.04)';
+    card.innerHTML =
+      '<div style="display:flex;align-items:flex-start;gap:8px">'
+      + '<div style="font-size:1.1rem;line-height:1.3;flex-shrink:0">' + icon + '</div>'
+      + '<div style="flex:1;min-width:0">'
+      +   '<div style="font-style:italic;font-size:0.9rem;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (s.displayName||s.taxon) + '">' + (s.displayName||s.taxon) + '</div>'
+      +   '<div style="font-size:0.72rem;color:' + color + ';margin-top:2px">' + label + ' · ' + date + '</div>'
+      +   (s.family ? '<div style="font-size:0.72rem;color:var(--muted);margin-top:2px">' + s.family + (s.genus && s.type==='species' ? ' · ' + s.genus : '') + '</div>' : '')
+      +   (s.path&&s.path.length ? '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">↳ ' + s.path.join(' → ') + '</div>' : '')
+      + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">'
+      +   '<button style="font-size:0.7rem;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;cursor:pointer;color:var(--muted)" onclick="deleteSaved(' + s.id + ')">✕</button>'
+      +   '<button style="font-size:0.7rem;padding:3px 8px;border:1px solid var(--forest);border-radius:4px;background:transparent;cursor:pointer;color:var(--forest)" onclick="jumpToSaved('' + encodeURIComponent(s.taxon) + '','' + encodeURIComponent(s.family||'') + '','' + encodeURIComponent(s.genus||'') + '','' + s.type + '')">→</button>'
+      + '</div>'
+      + '</div>';
+    el.appendChild(card);
+  }
+}
+
+function deleteSaved(id) {
+  storeSaved(loadSaved().filter(s => s.id !== id));
+  updateSavedBadge();
+  renderSaved();
+}
+
+function jumpToSaved(taxonEnc, familyEnc, genusEnc, type) {
+  const taxon = decodeURIComponent(taxonEnc);
+  const family = decodeURIComponent(familyEnc).toUpperCase();
+  const genus  = decodeURIComponent(genusEnc).toUpperCase();
+  showTab('key');
+  state.history = [];
+  if (type === 'species' && genus && family) {
+    state.familyName = family; state.genusName = genus; state.level = 'genus';
+    showResult('species', taxon, taxon, family + (genus ? ' · ' + genus : ''));
+  } else if (genus && family) {
+    state.familyName = family; state.genusName = genus; state.level = 'genus';
+    showResult('genus', taxon, taxon, family);
+  } else {
+    state.familyName = family || taxon.toUpperCase(); state.level = 'family';
+    showResult('family', family || taxon, taxon, '');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', updateSavedBadge);
 
 // ── ERROR FLAGGING ────────────────────────────────────────────────────────────
 const ERRORS_KEY = 'jepson_errors_v1';
@@ -1270,6 +1421,35 @@ function renderListItems(items, listType, ownerName, filter, container) {
 }
 
 </script>
+
+<div id="save-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;padding:20px">
+  <div style="background:white;border-radius:10px;padding:18px;width:100%;max-width:400px">
+    <h3 style="font-size:0.9rem;margin-bottom:6px;color:var(--forest)">🌿 Save plant</h3>
+    <div style="font-size:0.85rem;font-weight:600;font-style:italic;margin-bottom:12px" id="save-modal-name"></div>
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px">How did the identification go?</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      <button class="btn" id="save-btn-success"
+        style="justify-content:flex-start;padding:10px 12px;font-size:0.85rem;text-align:left"
+        onclick="commitSave('success')">
+        ✅ Successfully identified — I'm confident
+      </button>
+      <button class="btn" id="save-btn-unclear"
+        style="justify-content:flex-start;padding:10px 12px;font-size:0.85rem;text-align:left"
+        onclick="commitSave('unclear')">
+        🔍 Attempted — outcome uncertain
+      </button>
+      <button class="btn" id="save-btn-failed"
+        style="justify-content:flex-start;padding:10px 12px;font-size:0.85rem;text-align:left;color:var(--rust);border-color:var(--rust)"
+        onclick="commitSave('failed')">
+        ❌ Key failed — reached dead end or wrong result
+      </button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="closeSaveModal()" style="flex:1">Cancel</button>
+    </div>
+  </div>
+</div>
+
 
 <div id="flag-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;padding:20px">
   <div style="background:white;border-radius:10px;padding:18px;width:100%;max-width:400px">
