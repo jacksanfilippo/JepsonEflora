@@ -1142,20 +1142,57 @@ function renderSaved() {
     const date = new Date(s.date).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
     const card = document.createElement('div');
     card.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:11px 13px;margin-bottom:8px;background:rgba(255,255,255,0.04)';
-    card.innerHTML =
-      '<div style="display:flex;align-items:flex-start;gap:8px">'
-      + '<div style="font-size:1.1rem;line-height:1.3;flex-shrink:0">' + icon + '</div>'
-      + '<div style="flex:1;min-width:0">'
-      +   '<div style="font-style:italic;font-size:0.9rem;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (s.displayName||s.taxon) + '">' + (s.displayName||s.taxon) + '</div>'
-      +   '<div style="font-size:0.72rem;color:' + color + ';margin-top:2px">' + label + ' · ' + date + '</div>'
-      +   (s.family ? '<div style="font-size:0.72rem;color:var(--muted);margin-top:2px">' + s.family + (s.genus && s.type==='species' ? ' · ' + s.genus : '') + '</div>' : '')
-      +   (s.path&&s.path.length ? '<div style="font-size:0.7rem;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">↳ ' + s.path.join(' → ') + '</div>' : '')
-      + '</div>'
-      + '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">'
-      +   '<button style="font-size:0.7rem;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;cursor:pointer;color:var(--muted)" onclick="deleteSaved(' + s.id + ')">✕</button>'
-      +   '<button style="font-size:0.7rem;padding:3px 8px;border:1px solid var(--forest);border-radius:4px;background:transparent;cursor:pointer;color:var(--forest)" onclick="jumpToSaved('' + encodeURIComponent(s.taxon) + '','' + encodeURIComponent(s.family||'') + '','' + encodeURIComponent(s.genus||'') + '','' + s.type + '')">→</button>'
-      + '</div>'
-      + '</div>';
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:flex-start;gap:8px';
+
+    const iconEl = document.createElement('div');
+    iconEl.style.cssText = 'font-size:1.1rem;line-height:1.3;flex-shrink:0';
+    iconEl.textContent = icon;
+    row.appendChild(iconEl);
+
+    const body = document.createElement('div');
+    body.style.cssText = 'flex:1;min-width:0';
+    const nameEl = document.createElement('div');
+    nameEl.style.cssText = 'font-style:italic;font-size:0.9rem;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    nameEl.title = s.displayName || s.taxon;
+    nameEl.textContent = s.displayName || s.taxon;
+    body.appendChild(nameEl);
+
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:0.72rem;margin-top:2px;color:' + color;
+    meta.textContent = label + ' · ' + date;
+    body.appendChild(meta);
+
+    if (s.family) {
+      const fam = document.createElement('div');
+      fam.style.cssText = 'font-size:0.72rem;color:var(--muted);margin-top:2px';
+      fam.textContent = s.family + (s.genus && s.type==='species' ? ' · ' + s.genus : '');
+      body.appendChild(fam);
+    }
+    if (s.path && s.path.length) {
+      const pathEl = document.createElement('div');
+      pathEl.style.cssText = 'font-size:0.7rem;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      pathEl.textContent = '↳ ' + s.path.join(' → ');
+      body.appendChild(pathEl);
+    }
+    row.appendChild(body);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex-shrink:0';
+    const delBtn = document.createElement('button');
+    delBtn.style.cssText = 'font-size:0.7rem;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:transparent;cursor:pointer;color:var(--muted)';
+    delBtn.textContent = '✕';
+    delBtn.onclick = () => deleteSaved(s.id);
+    actions.appendChild(delBtn);
+    const goBtn = document.createElement('button');
+    goBtn.style.cssText = 'font-size:0.7rem;padding:3px 8px;border:1px solid var(--forest);border-radius:4px;background:transparent;cursor:pointer;color:var(--forest)';
+    goBtn.textContent = '→';
+    goBtn.onclick = () => jumpToSaved(s.taxon, s.family || '', s.genus || '', s.type);
+    actions.appendChild(goBtn);
+    row.appendChild(actions);
+
+    card.appendChild(row);
     el.appendChild(card);
   }
 }
@@ -1166,10 +1203,9 @@ function deleteSaved(id) {
   renderSaved();
 }
 
-function jumpToSaved(taxonEnc, familyEnc, genusEnc, type) {
-  const taxon = decodeURIComponent(taxonEnc);
-  const family = decodeURIComponent(familyEnc).toUpperCase();
-  const genus  = decodeURIComponent(genusEnc).toUpperCase();
+function jumpToSaved(taxon, familyRaw, genusRaw, type) {
+  const family = (familyRaw||'').toUpperCase();
+  const genus  = (genusRaw||'').toUpperCase();
   showTab('key');
   state.history = [];
   if (type === 'species' && genus && family) {
