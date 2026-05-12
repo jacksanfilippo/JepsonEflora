@@ -40,8 +40,10 @@ header{background:var(--forest);color:var(--cream);padding:10px 14px;display:fle
 
 /* TABS */
 #tabs{display:flex;border-bottom:2px solid var(--cream-dk);background:white}
-.tab{flex:1;padding:8px;font-size:0.78rem;cursor:pointer;text-align:center;color:var(--muted);font-family:inherit;background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.15s;-webkit-tap-highlight-color:transparent}
+.tab{flex:1;min-width:0;padding:8px 4px;font-size:0.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;text-align:center;color:var(--muted);font-family:inherit;background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.15s;-webkit-tap-highlight-color:transparent}
 .tab.active{color:var(--forest);border-bottom-color:var(--forest);font-weight:bold}
+.tab-lbl{display:inline}
+@media(max-width:480px){.tab{font-size:0.95rem;padding:8px 2px}.tab-lbl{display:none}}
 .tab-panel{display:none;flex:1;flex-direction:column}
 .tab-panel.active{display:flex}
 
@@ -162,11 +164,11 @@ footer a{color:var(--sage);text-decoration:none}
 <div id="breadcrumb"><span class="bc-cur">Start</span></div>
 
 <div id="tabs">
-  <button class="tab active" onclick="showTab('key')">🔑 Key</button>
-  <button class="tab" onclick="showTab('browser')">📋 Families</button>
-  <button class="tab" onclick="showTab('notes')">📝 Notes</button>
-  <button class="tab" id="tab-saved" onclick="showTab('saved')">🌿 Saved<span id="saved-badge" style="display:none;margin-left:4px;background:var(--forest);color:white;border-radius:8px;padding:1px 5px;font-size:0.65rem"></span></button>
-  <button class="tab" id="tab-errors" onclick="showTab('errors')">🚩 Errors<span id="err-badge" style="display:none;margin-left:4px;background:var(--rust);color:white;border-radius:8px;padding:1px 5px;font-size:0.65rem"></span></button>
+  <button class="tab active" onclick="showTab('key')">🔑 <span class="tab-lbl">Key</span></button>
+  <button class="tab" onclick="showTab('browser')">📋 <span class="tab-lbl">Families</span></button>
+  <button class="tab" onclick="showTab('notes')">📝 <span class="tab-lbl">Notes</span></button>
+  <button class="tab" id="tab-saved" onclick="showTab('saved')">🌿 <span class="tab-lbl">Saved</span><span id="saved-badge" style="display:none;margin-left:3px;background:var(--forest);color:white;border-radius:8px;padding:1px 5px;font-size:0.65rem"></span></button>
+  <button class="tab" id="tab-errors" onclick="showTab('errors')">🚩 <span class="tab-lbl">Errors</span><span id="err-badge" style="display:none;margin-left:3px;background:var(--rust);color:white;border-radius:8px;padding:1px 5px;font-size:0.65rem"></span></button>
 </div>
 
 <main>
